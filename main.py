@@ -45,6 +45,7 @@ class VideoVisionPlugin(Star):
         super().__init__(context)
         self.config = {**DEFAULT_CONFIG, **(config or {})}
         self._ffmpeg_available: Optional[bool] = None
+        logger.info(f"[VideoVision] Plugin instance created with config: enabled={self.config.get('enabled', True)}")
 
     async def initialize(self):
         """Called when plugin is activated."""
@@ -336,31 +337,39 @@ class VideoVisionPlugin(Star):
         """
         Handle Discord messages and check for video attachments.
         """
+        logger.debug(f"[VideoVision] Handler triggered for Discord message")
+
         # Check if plugin is enabled
         if not self.config.get("enabled", True):
+            logger.debug("[VideoVision] Plugin is disabled, skipping")
             return
 
         # Check if ffmpeg is available
         if not self._ffmpeg_available:
+            logger.debug("[VideoVision] ffmpeg not available, skipping")
             return
 
         # Check platform filter
         if not self._should_process_platform(event):
+            logger.debug("[VideoVision] Platform not in filter list, skipping")
             return
 
         # Get message components
         messages = event.get_messages()
         if not messages:
+            logger.debug("[VideoVision] No message components found")
             return
 
         # Find video file attachments
         video_files = []
         for msg in messages:
             if isinstance(msg, File):
+                logger.debug(f"[VideoVision] Found file attachment: {msg.name}")
                 if self._is_video_file(msg.name):
                     video_files.append(msg)
 
         if not video_files:
+            logger.debug("[VideoVision] No video file attachments found in message")
             return
 
         logger.info(f"[VideoVision] Found {len(video_files)} video attachment(s)")
