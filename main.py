@@ -25,6 +25,7 @@ DEFAULT_CONFIG = {
     "frame_format": "jpg",
     "video_extensions": ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv", "m4v"],
     "platform_ids": [],
+    "channel_ids": [],  # List of Discord channel IDs to process. Empty = all channels
     "skip_first_seconds": 0,  # Skip the first N seconds of the video
     "skip_last_seconds": 0,   # Skip the last N seconds of the video
     "frame_interval": 0,      # Extract one frame every N seconds (0 = use max_frames instead)
@@ -99,6 +100,26 @@ class VideoVisionPlugin(Star):
 
         platform_id = event.platform_meta.id if event.platform_meta else None
         return platform_id in platform_ids
+
+    def _should_process_channel(self, event: AstrMessageEvent) -> bool:
+        """Check if the channel should be processed based on configuration."""
+        channel_ids = self.config.get("channel_ids", [])
+        if not channel_ids:
+            return True
+
+        # Get channel ID from session_id or unified_msg_origin
+        session_id = event.session_id or ""
+        unified_origin = event.unified_msg_origin or ""
+
+        # Convert configured channel IDs to strings for comparison
+        channel_ids_str = [str(cid) for cid in channel_ids]
+
+        # Check if any configured channel ID is in the session or unified origin
+        for channel_id in channel_ids_str:
+            if channel_id in session_id or channel_id in unified_origin or session_id == channel_id:
+                return True
+
+        return False
 
     async def _get_video_duration(self, video_path: str) -> Optional[float]:
         """Get video duration using ffprobe."""
@@ -345,6 +366,11 @@ class VideoVisionPlugin(Star):
             logger.debug("[VideoVision] Platform not in filter list, skipping")
             return
 
+        # Check channel filter
+        if not self._should_process_channel(event):
+            logger.debug("[VideoVision] Channel not in filter list, skipping")
+            return
+
         # Get message components
         messages = event.get_messages()
         if not messages:
@@ -474,6 +500,12 @@ class VideoVisionPlugin(Star):
             status_parts.append(f"- Platform Filter: {', '.join(platform_ids)}")
         else:
             status_parts.append("- Platform Filter: All platforms")
+
+        channel_ids = self.config.get("channel_ids", [])
+        if channel_ids:
+            status_parts.append(f"- Channel Filter: {', '.join(str(cid) for cid in channel_ids)}")
+        else:
+            status_parts.append("- Channel Filter: All channels")
 
         yield event.plain_result("\n".join(status_parts))
 
