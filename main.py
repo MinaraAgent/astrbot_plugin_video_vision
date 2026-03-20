@@ -310,8 +310,6 @@ class VideoVisionPlugin(Star):
                 prompt=prompt,
                 image_urls=image_urls,
                 contexts=[],  # No additional context
-                tool_calls_result=None,
-                function_tools=None
             )
 
             # Call the LLM
