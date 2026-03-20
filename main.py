@@ -321,11 +321,13 @@ class VideoVisionPlugin(Star):
                 return None
 
             # Build image URLs from frame paths (use absolute paths)
+            # Note: Pass absolute paths directly without file:// prefix
+            # AstrBot's resolve_image_part() incorrectly strips leading / from file:/// URLs
             image_urls = []
             for frame_path in frame_paths:
-                # Ensure absolute path and convert to file URL
+                # Ensure absolute path
                 abs_path = os.path.abspath(frame_path)
-                image_urls.append(f"file://{abs_path}")
+                image_urls.append(abs_path)
 
             # Call the LLM with prompt and image URLs
             response = await self.context.llm_generate(
