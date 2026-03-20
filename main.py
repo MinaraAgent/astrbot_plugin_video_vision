@@ -356,49 +356,54 @@ class VideoVisionPlugin(Star):
     async def on_discord_message(self, event: AstrMessageEvent):
         """
         Handle Discord messages and check for video attachments.
-        Analyzes videos and stores results in event extras for the persona to use.
+        Marks the event as having videos that need processing before LLM request.
         """
-        logger.debug(f"[VideoVision] Handler triggered for Discord message")
-
         # Check if plugin is enabled
         if not self.config.get("enabled", True):
-            logger.debug("[VideoVision] Plugin is disabled, skipping")
             return
 
         # Check if ffmpeg is available
         if not self._ffmpeg_available:
-            logger.debug("[VideoVision] ffmpeg not available, skipping")
             return
 
         # Check platform filter
         if not self._should_process_platform(event):
-            logger.debug("[VideoVision] Platform not in filter list, skipping")
             return
 
         # Check channel filter
         if not self._should_process_channel(event):
-            logger.debug("[VideoVision] Channel not in filter list, skipping")
             return
 
         # Get message components
         messages = event.get_messages()
         if not messages:
-            logger.debug("[VideoVision] No message components found")
             return
 
         # Find video file attachments
         video_files = []
         for msg in messages:
             if isinstance(msg, File):
-                logger.debug(f"[VideoVision] Found file attachment: {msg.name}")
                 if self._is_video_file(msg.name):
                     video_files.append(msg)
 
         if not video_files:
-            logger.debug("[VideoVision] No video file attachments found in message")
             return
 
-        logger.info(f"[VideoVision] Found {len(video_files)} video attachment(s)")
+        # Store video files in event extras for processing in on_waiting_llm_request
+        event.set_extra("video_vision_pending_files", video_files)
+        logger.info(f"[VideoVision] Found {len(video_files)} video(s), will analyze before LLM request")
+
+    @filter.on_waiting_llm_request()
+    async def process_videos_before_llm(self, event: AstrMessageEvent) -> None:
+        """
+        Process videos BEFORE the LLM request starts.
+        This ensures video analysis is available when the persona responds.
+        """
+        video_files = event.get_extra("video_vision_pending_files")
+        if not video_files:
+            return
+
+        logger.info(f"[VideoVision] Processing {len(video_files)} video(s) before LLM request")
 
         # Process each video and store analysis in event extras
         video_analyses = []
@@ -415,9 +420,10 @@ class VideoVisionPlugin(Star):
         # Store video analyses in event extras for the on_llm_request hook
         if video_analyses:
             event.set_extra("video_vision_analyses", video_analyses)
-            logger.info(f"[VideoVision] Stored {len(video_analyses)} video analysis(es) in event extras")
+            logger.info(f"[VideoVision] Video analysis complete, {len(video_analyses)} video(s) analyzed")
 
-        # Don't yield any result - let the main persona respond using the video context
+        # Clear pending files
+        event.set_extra("video_vision_pending_files", None)
 
     @filter.on_llm_request()
     async def inject_video_context(self, event: AstrMessageEvent, req: ProviderRequest) -> None:
