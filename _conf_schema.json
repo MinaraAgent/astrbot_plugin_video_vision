@@ -51,6 +51,14 @@
       "type": "string"
     }
   },
+  "channel_ids": {
+    "type": "list",
+    "description": "List of Discord channel IDs to process (empty = all channels)",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
   "analysis_prompt": {
     "type": "text",
     "description": "Prompt sent to the LLM for video analysis",
