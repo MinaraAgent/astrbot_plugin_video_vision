@@ -297,25 +297,17 @@ class VideoVisionPlugin(Star):
                 logger.error("[VideoVision] No LLM provider configured")
                 return None
 
-            # Build the request with image URLs
+            # Build image URLs from frame paths
             image_urls = []
             for frame_path in frame_paths:
                 # Convert local path to file URL
                 image_urls.append(f"file://{frame_path}")
 
-            # Import ProviderRequest for LLM call
-            from astrbot.core.provider.entites import ProviderRequest
-
-            request = ProviderRequest(
-                prompt=prompt,
-                image_urls=image_urls,
-                contexts=[],  # No additional context
-            )
-
-            # Call the LLM
+            # Call the LLM with prompt and image URLs
             response = await self.context.llm_generate(
                 chat_provider_id=provider_id,
-                prompt=request
+                prompt=prompt,
+                image_urls=image_urls
             )
 
             if response and response.completion_text:
