@@ -297,11 +297,12 @@ class VideoVisionPlugin(Star):
                 logger.error("[VideoVision] No LLM provider configured")
                 return None
 
-            # Build image URLs from frame paths
+            # Build image URLs from frame paths (use absolute paths)
             image_urls = []
             for frame_path in frame_paths:
-                # Convert local path to file URL
-                image_urls.append(f"file://{frame_path}")
+                # Ensure absolute path and convert to file URL
+                abs_path = os.path.abspath(frame_path)
+                image_urls.append(f"file://{abs_path}")
 
             # Call the LLM with prompt and image URLs
             response = await self.context.llm_generate(
