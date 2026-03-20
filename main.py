@@ -3,6 +3,8 @@ AstrBot Video Vision Plugin
 
 This plugin detects video file attachments in Discord messages,
 extracts key frames using ffmpeg, and sends them to the LLM for analysis.
+The analysis result is injected into the conversation context so the persona
+can respond naturally to the video content.
 """
 
 import asyncio
@@ -16,6 +18,8 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 from astrbot.api.message_components import File
+from astrbot.api.provider import ProviderRequest
+from astrbot.core.agent.message import TextPart
 
 
 # Default configuration
@@ -352,6 +356,7 @@ class VideoVisionPlugin(Star):
     async def on_discord_message(self, event: AstrMessageEvent):
         """
         Handle Discord messages and check for video attachments.
+        Analyzes videos and stores results in event extras for the persona to use.
         """
         logger.debug(f"[VideoVision] Handler triggered for Discord message")
 
@@ -395,23 +400,61 @@ class VideoVisionPlugin(Star):
 
         logger.info(f"[VideoVision] Found {len(video_files)} video attachment(s)")
 
-        # Process each video
+        # Process each video and store analysis in event extras
+        video_analyses = []
         for video_file in video_files:
             try:
-                for result in await self._process_video(event, video_file):
-                    yield result
+                analysis = await self._process_video_for_context(event, video_file)
+                if analysis:
+                    video_analyses.append(analysis)
             except Exception as e:
                 logger.error(f"[VideoVision] Error processing video: {e}")
                 import traceback
                 traceback.print_exc()
 
-    async def _process_video(self, event: AstrMessageEvent, video_file: File):
-        """
-        Process a single video file attachment.
-        Returns a list of results to yield.
-        """
-        results = []
+        # Store video analyses in event extras for the on_llm_request hook
+        if video_analyses:
+            event.set_extra("video_vision_analyses", video_analyses)
+            logger.info(f"[VideoVision] Stored {len(video_analyses)} video analysis(es) in event extras")
 
+        # Don't yield any result - let the main persona respond using the video context
+
+    @filter.on_llm_request()
+    async def inject_video_context(self, event: AstrMessageEvent, req: ProviderRequest) -> None:
+        """
+        Inject video analysis results into the LLM request context.
+        This allows the persona to respond naturally to video content.
+        """
+        video_analyses = event.get_extra("video_vision_analyses")
+        if not video_analyses:
+            return
+
+        # Build context from video analyses
+        context_parts = ["[Video Content Analysis]"]
+        context_parts.append("The user has shared the following video(s). Here is the analysis of the video content:\n")
+
+        for i, analysis in enumerate(video_analyses, 1):
+            if len(video_analyses) > 1:
+                context_parts.append(f"\n--- Video {i} ---")
+            context_parts.append(analysis)
+
+        context_parts.append("\n[End of Video Analysis]")
+        context_parts.append("Please respond naturally to the user's message, taking into account the video content above.")
+
+        video_context = "\n".join(context_parts)
+
+        # Add to extra_user_content_parts so it appears in the user message context
+        req.extra_user_content_parts.append(
+            TextPart(text=video_context)
+        )
+
+        logger.info(f"[VideoVision] Injected video context ({len(video_context)} chars) into LLM request")
+
+    async def _process_video_for_context(self, event: AstrMessageEvent, video_file: File) -> Optional[str]:
+        """
+        Process a single video file attachment and return analysis for context.
+        Returns the analysis string or None if failed.
+        """
         # Create temporary directory for processing
         temp_dir = tempfile.mkdtemp(prefix="video_vision_")
 
@@ -420,7 +463,7 @@ class VideoVisionPlugin(Star):
             video_url = video_file.url
             if not video_url:
                 logger.error("[VideoVision] Video file has no URL")
-                return results
+                return None
 
             video_filename = video_file.name or "video.mp4"
             video_path = os.path.join(temp_dir, video_filename)
@@ -428,8 +471,8 @@ class VideoVisionPlugin(Star):
             logger.info(f"[VideoVision] Downloading video: {video_filename}")
 
             if not await self._download_file(video_url, video_path):
-                results.append(event.plain_result("Failed to download video file for analysis."))
-                return results
+                logger.error("[VideoVision] Failed to download video file")
+                return None
 
             logger.info("[VideoVision] Video downloaded, extracting frames...")
 
@@ -448,11 +491,8 @@ class VideoVisionPlugin(Star):
             )
 
             if not frame_paths:
-                results.append(event.plain_result(
-                    "Failed to extract frames from video. "
-                    "The video may be too short or in an unsupported format."
-                ))
-                return results
+                logger.warning("[VideoVision] Failed to extract frames from video")
+                return None
 
             logger.info(f"[VideoVision] Extracted {len(frame_paths)} frames, analyzing with LLM...")
 
@@ -469,10 +509,11 @@ class VideoVisionPlugin(Star):
             )
 
             if analysis:
-                # Send the analysis result
-                results.append(event.plain_result(f"Video Analysis:\n\n{analysis}"))
+                logger.info(f"[VideoVision] Video analysis complete ({len(analysis)} chars)")
+                return analysis
             else:
-                results.append(event.plain_result("Failed to analyze video content."))
+                logger.warning("[VideoVision] Failed to analyze video content")
+                return None
 
         finally:
             # Clean up temporary files
@@ -481,8 +522,6 @@ class VideoVisionPlugin(Star):
                 logger.debug(f"[VideoVision] Cleaned up temp directory: {temp_dir}")
             except Exception as e:
                 logger.warning(f"[VideoVision] Failed to clean up temp directory: {e}")
-
-        return results
 
     @filter.command("video_vision_status")
     async def status_command(self, event: AstrMessageEvent):
