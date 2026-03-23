@@ -11,6 +11,7 @@ import asyncio
 import os
 import tempfile
 import shutil
+from contextvars import ContextVar
 from pathlib import Path
 from typing import List, Optional
 
@@ -21,6 +22,8 @@ from astrbot.api.message_components import File
 from astrbot.api.provider import ProviderRequest
 from astrbot.core.agent.message import TextPart
 
+# Context variable to pass metadata through the call chain
+langfuse_observation_ctx: ContextVar[Optional[dict]] = ContextVar('langfuse_observation')
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -507,12 +510,26 @@ class VideoVisionPlugin(Star):
                 f"Analyzing video ({len(frame_paths)} frames extracted)..."
             ))
 
-            # Analyze with LLM
-            analysis = await self._analyze_frames_with_llm(
-                event,
-                frame_paths,
-                self.config["analysis_prompt"]
-            )
+            # Set context variable for Langfuse naming
+            langfuse_observation_ctx.set({
+                "name": "VideoVision Analysis",
+                "metadata": {
+                    "plugin": "video_vision",
+                    "frame_count": len(frame_paths),
+                    "video_filename": video_filename
+                }
+            })
+
+            try:
+                # Analyze with LLM
+                analysis = await self._analyze_frames_with_llm(
+                    event,
+                    frame_paths,
+                    self.config["analysis_prompt"]
+                )
+            finally:
+                # Clear context variable
+                langfuse_observation_ctx.set(None)
 
             if analysis:
                 logger.info(f"[VideoVision] Video analysis complete ({len(analysis)} chars)")
