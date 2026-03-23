@@ -1,0 +1,67 @@
+{
+  "enabled": {
+    "type": "bool",
+    "description": "Enable or disable the video vision plugin",
+    "default": true
+  },
+  "max_frames": {
+    "type": "int",
+    "description": "Maximum number of frames to extract from each video (used when frame_interval=0)",
+    "default": 5,
+    "minimum": 1,
+    "maximum": 20
+  },
+  "frame_format": {
+    "type": "string",
+    "description": "Output format for extracted frames (jpg, png, etc.)",
+    "default": "jpg",
+    "enum": ["jpg", "jpeg", "png", "webp"]
+  },
+  "skip_first_seconds": {
+    "type": "float",
+    "description": "Skip the first N seconds of the video (useful to skip intros)",
+    "default": 0,
+    "minimum": 0
+  },
+  "skip_last_seconds": {
+    "type": "float",
+    "description": "Skip the last N seconds of the video (useful to skip outros)",
+    "default": 0,
+    "minimum": 0
+  },
+  "frame_interval": {
+    "type": "float",
+    "description": "Extract one frame every N seconds (0 = use max_frames instead, evenly distributed)",
+    "default": 0,
+    "minimum": 0
+  },
+  "video_extensions": {
+    "type": "list",
+    "description": "List of video file extensions to process",
+    "default": ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv", "m4v"],
+    "items": {
+      "type": "string"
+    }
+  },
+  "platform_ids": {
+    "type": "list",
+    "description": "List of platform IDs to process (empty = all platforms)",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "channel_ids": {
+    "type": "list",
+    "description": "List of Discord channel IDs to process (empty = all channels)",
+    "default": [],
+    "items": {
+      "type": "string"
+    }
+  },
+  "analysis_prompt": {
+    "type": "text",
+    "description": "Prompt sent to the LLM for video analysis",
+    "default": "Please analyze the content of this video based on the extracted frames. Describe what you see, including any actions, objects, people, or text visible in the frames."
+  }
+}
